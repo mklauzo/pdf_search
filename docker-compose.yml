@@ -1,0 +1,7 @@
+services:
+  pdf-search:
+    build: .
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ${PDF_DIR:-./data}:/data

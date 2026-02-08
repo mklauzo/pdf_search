@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF Search</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    line-height: 1.5;
+  }
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+  }
+  h1 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    font-size: 1.8rem;
+    color: #1a1a1a;
+  }
+  .dir-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0.6rem 1rem;
+    flex-wrap: wrap;
+  }
+  .dir-bar label {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: #555;
+    white-space: nowrap;
+  }
+  .dir-bar .dir-current {
+    font-size: 0.9rem;
+    color: #1a1a1a;
+    font-family: monospace;
+  }
+  .dir-bar select {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+  }
+  .dir-bar .btn-dir {
+    padding: 0.4rem 0.8rem;
+    font-size: 0.85rem;
+    background: #4a90d9;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .dir-bar .btn-dir:hover { background: #3a7bc8; }
+  .search-bar {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+  .search-bar input {
+    flex: 1;
+    padding: 0.7rem 1rem;
+    font-size: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-bar input:focus { border-color: #4a90d9; }
+  button {
+    padding: 0.7rem 1.2rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .btn-search { background: #4a90d9; color: #fff; }
+  .btn-search:hover { background: #3a7bc8; }
+  .btn-reindex { background: #e0e0e0; color: #333; }
+  .btn-reindex:hover { background: #d0d0d0; }
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+  }
+  .status-bar {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 1.5rem;
+    display: none;
+  }
+  .status-bar.active { display: block; }
+  .progress-wrapper {
+    background: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+    height: 8px;
+    margin-top: 0.5rem;
+  }
+  .progress-fill {
+    height: 100%;
+    background: #4a90d9;
+    transition: width 0.3s;
+    width: 0%;
+  }
+  .status-text { font-size: 0.9rem; color: #666; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #fff;
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  th {
+    background: #4a90d9;
+    color: #fff;
+    text-align: left;
+    padding: 0.75rem 1rem;
+    font-weight: 600;
+  }
+  td {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid #eee;
+    vertical-align: top;
+  }
+  tr:hover td { background: #f9f9f9; }
+  td:nth-child(1) { width: 20%; word-break: break-word; }
+  td:nth-child(2) { width: 5%; text-align: center; }
+  td:nth-child(3) { width: 40%; }
+  td:nth-child(4) { width: 35%; text-align: center; }
+  td mark { background: #fff3a8; padding: 0 2px; border-radius: 2px; }
+  .page-thumb {
+    max-height: 200px;
+    max-width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .page-thumb:hover { opacity: 0.85; }
+  .no-results {
+    text-align: center;
+    padding: 2rem;
+    color: #999;
+  }
+  .error-list { margin-top: 0.5rem; color: #c00; font-size: 0.85rem; }
+  #results-count { font-size: 0.9rem; color: #666; margin-bottom: 0.5rem; }
+  .stats-panel {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+  .stats-panel.active { display: block; }
+  .stats-panel h2 {
+    font-size: 1rem;
+    color: #1a1a1a;
+    margin-bottom: 0.6rem;
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+  }
+  .stat-card {
+    background: #f9f9f9;
+    border-radius: 6px;
+    padding: 0.6rem 0.8rem;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #4a90d9;
+  }
+  .stat-label {
+    font-size: 0.8rem;
+    color: #777;
+    margin-top: 0.15rem;
+  }
+  .stats-dirs {
+    font-size: 0.85rem;
+    color: #555;
+  }
+  .stats-dirs table {
+    width: auto;
+    margin-top: 0.4rem;
+    box-shadow: none;
+    font-size: 0.85rem;
+  }
+  .stats-dirs th {
+    background: #eee;
+    color: #333;
+    padding: 0.3rem 0.8rem;
+    font-weight: 600;
+  }
+  .stats-dirs td {
+    padding: 0.25rem 0.8rem;
+    border-top: 1px solid #eee;
+  }
+  .btn-stats {
+    background: #e0e0e0;
+    color: #333;
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+  }
+  .btn-stats:hover { background: #d0d0d0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>PDF Search</h1>
+
+  <div class="dir-bar">
+    <label>Directory:</label>
+    <span class="dir-current" id="dir-current">/data</span>
+    <select id="dir-select">
+      <option value="">/ (all)</option>
+    </select>
+    <button class="btn-dir" onclick="changeDir()">Change</button>
+  </div>
+
+  <div class="search-bar">
+    <input type="text" id="query" placeholder="Enter search phrase..." autofocus>
+    <button class="btn-search" onclick="doSearch()">Search</button>
+  </div>
+
+  <div class="toolbar">
+    <div id="results-count"></div>
+    <div>
+      <button class="btn-stats" onclick="toggleStats()">Stats</button>
+      <button class="btn-reindex" onclick="doReindex()">Reindex</button>
+    </div>
+  </div>
+
+  <div class="stats-panel" id="stats-panel">
+    <h2>Index Statistics</h2>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-files">-</div>
+        <div class="stat-label">PDF files</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-pages">-</div>
+        <div class="stat-label">Pages</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-chars">-</div>
+        <div class="stat-label">Characters</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-avg">-</div>
+        <div class="stat-label">Avg pages/file</div>
+      </div>
+    </div>
+    <div class="stats-dirs" id="stats-dirs"></div>
+  </div>
+
+  <div class="status-bar" id="status-bar">
+    <div class="status-text" id="status-text">Indexing...</div>
+    <div class="progress-wrapper">
+      <div class="progress-fill" id="progress-fill"></div>
+    </div>
+    <div class="error-list" id="error-list"></div>
+  </div>
+
+  <div id="results"></div>
+</div>
+
+<script>
+const queryInput = document.getElementById('query');
+const resultsDiv = document.getElementById('results');
+const resultsCount = document.getElementById('results-count');
+const statusBar = document.getElementById('status-bar');
+const statusText = document.getElementById('status-text');
+const progressFill = document.getElementById('progress-fill');
+const errorList = document.getElementById('error-list');
+const dirCurrent = document.getElementById('dir-current');
+const dirSelect = document.getElementById('dir-select');
+
+let pollTimer = null;
+let lastQuery = '';
+
+queryInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter') doSearch();
+});
+
+// --- Directory ---
+
+async function loadDirectories() {
+  try {
+    const [dirRes, curRes] = await Promise.all([
+      fetch('/directories'),
+      fetch('/current-directory')
+    ]);
+    const dirData = await dirRes.json();
+    const curData = await curRes.json();
+
+    dirCurrent.textContent = curData.full_path;
+
+    dirSelect.innerHTML = '<option value="">/ (all)</option>';
+    for (const d of dirData.directories) {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      if (d === curData.path) opt.selected = true;
+      dirSelect.appendChild(opt);
+    }
+    if (curData.path === '') {
+      dirSelect.querySelector('option[value=""]').selected = true;
+    }
+  } catch (err) { /* ignore */ }
+}
+
+async function changeDir() {
+  const path = dirSelect.value;
+  try {
+    const res = await fetch('/set-directory', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({path})
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      alert(data.detail || 'Error changing directory');
+      return;
+    }
+    await loadDirectories();
+    startPolling();
+  } catch (err) {
+    alert('Connection error.');
+  }
+}
+
+// --- Search ---
+
+async function doSearch() {
+  const query = queryInput.value.trim();
+  if (!query) return;
+  lastQuery = query;
+  resultsCount.textContent = 'Searching...';
+  resultsDiv.innerHTML = '';
+  try {
+    const res = await fetch('/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query})
+    });
+    const data = await res.json();
+    if (data.error) {
+      resultsCount.textContent = 'Query error. Try a different phrase.';
+      return;
+    }
+    renderResults(data.results);
+  } catch (err) {
+    resultsCount.textContent = 'Connection error.';
+  }
+}
+
+function renderResults(results) {
+  if (!results.length) {
+    resultsCount.textContent = 'No results.';
+    resultsDiv.innerHTML = '';
+    return;
+  }
+  resultsCount.textContent = `Found: ${results.length} result(s)`;
+  let html = '<table><thead><tr><th>File</th><th>Page</th><th>Snippet</th><th>Preview</th></tr></thead><tbody>';
+  for (const r of results) {
+    const imgSrc = `/page-image?file=${encodeURIComponent(r.file)}&page=${r.page}&query=${encodeURIComponent(lastQuery)}`;
+    html += `<tr>
+      <td>${esc(r.file)}</td>
+      <td>${r.page}</td>
+      <td>${r.snippet}</td>
+      <td><a href="${imgSrc}" target="_blank"><img class="page-thumb" src="${imgSrc}" loading="lazy" alt="Page ${r.page}"></a></td>
+    </tr>`;
+  }
+  html += '</tbody></table>';
+  resultsDiv.innerHTML = html;
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// --- Reindex ---
+
+async function doReindex() {
+  try {
+    await fetch('/reindex', {method: 'POST'});
+    startPolling();
+  } catch (err) {
+    alert('Connection error.');
+  }
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  statusBar.classList.add('active');
+  pollTimer = setInterval(pollStatus, 1000);
+  pollStatus();
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+  setTimeout(() => statusBar.classList.remove('active'), 2000);
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch('/indexing-status');
+    const s = await res.json();
+    if (s.is_running) {
+      statusBar.classList.add('active');
+      const pct = s.total_files ? Math.round((s.processed_files / s.total_files) * 100) : 0;
+      statusText.textContent = `Indexing: ${s.processed_files}/${s.total_files} — ${s.current_file}`;
+      progressFill.style.width = pct + '%';
+    } else {
+      statusText.textContent = `Indexing complete (${s.processed_files}/${s.total_files}).`;
+      progressFill.style.width = '100%';
+      stopPolling();
+    }
+    if (s.errors && s.errors.length) {
+      errorList.textContent = 'Errors: ' + s.errors.join('; ');
+    } else {
+      errorList.textContent = '';
+    }
+  } catch (err) { /* ignore */ }
+}
+
+// --- Stats ---
+
+const statsPanel = document.getElementById('stats-panel');
+
+function formatNum(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+async function toggleStats() {
+  if (statsPanel.classList.contains('active')) {
+    statsPanel.classList.remove('active');
+    return;
+  }
+  try {
+    const res = await fetch('/stats');
+    const s = await res.json();
+    document.getElementById('stat-files').textContent = s.files;
+    document.getElementById('stat-pages').textContent = formatNum(s.pages);
+    document.getElementById('stat-chars').textContent = formatNum(s.total_chars);
+    document.getElementById('stat-avg').textContent = s.avg_pages_per_file;
+
+    const dirs = s.files_by_directory;
+    const dirNames = Object.keys(dirs);
+    if (dirNames.length > 0) {
+      let html = '<strong>Files by directory:</strong><table><thead><tr><th>Directory</th><th>Files</th></tr></thead><tbody>';
+      for (const d of dirNames) {
+        html += `<tr><td>${esc(d === '.' ? '/ (root)' : d)}</td><td>${dirs[d]}</td></tr>`;
+      }
+      html += '</tbody></table>';
+      document.getElementById('stats-dirs').innerHTML = html;
+    } else {
+      document.getElementById('stats-dirs').innerHTML = '<em>No indexed files.</em>';
+    }
+    statsPanel.classList.add('active');
+  } catch (err) { /* ignore */ }
+}
+
+// Init
+loadDirectories();
+startPolling();
+</script>
+</body>
+</html>

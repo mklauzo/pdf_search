@@ -1,0 +1,50 @@
+PDF Search — wyszukiwarka treści w plikach PDF
+
+Aplikacja webowa uruchamiana w Dockerze. Indeksuje pliki PDF (tekstowe i skany)
+z wybranego katalogu na dysku i umożliwia wyszukiwanie fraz przez przeglądarkę.
+Skany są rozpoznawane automatycznie przez OCR (Tesseract, język polski).
+
+Wymagania: Docker i Docker Compose.
+
+Konfiguracja — plik .env obok docker-compose.yml:
+
+    PDF_DIR=/ścieżka/do/katalogu/z/pdfami
+    PORT=8080
+
+Uruchomienie:
+
+    docker-compose up -d --build
+
+Aplikacja dostępna pod adresem http://localhost:8080 (lub inny ustawiony PORT).
+
+Przy starcie pliki PDF są automatycznie indeksowane. Postęp widoczny na stronie.
+Przycisk "Reindeksuj" pozwala odświeżyć indeks po dodaniu nowych plików.
+Niezmienione pliki nie są przetwarzane ponownie.
+
+Zmiana katalogu PDF bez restartu kontenera
+-------------------------------------------
+
+Zmiana podkatalogu wewnątrz zamontowanego wolumenu działa z poziomu UI
+(dropdown "Katalog" nad wyszukiwarką) — bez restartu.
+
+Zmiana ścieżki hosta (inny PDF_DIR) wymaga restartu kontenera,
+bo Docker mount jest ustawiany przy tworzeniu kontenera.
+
+Obejście 1: zamontuj szerszy katalog
+
+  Zamontuj katalog nadrzędny, np. cały home:
+
+    PDF_DIR=/home/jan docker compose up --build
+
+  Wtedy w UI zobaczysz podkatalogi (dokumenty, projekty/raporty, itd.)
+  i przełączasz się między nimi bez restartu.
+
+Obejście 2: symlinki
+
+  Zamontuj jeden katalog i wrzucaj do niego symlinki do innych lokalizacji:
+
+    mkdir -p ./data
+    ln -s /home/jan/dokumenty ./data/dokumenty
+    ln -s /home/jan/raporty ./data/raporty
+
+  Wtedy wszystkie katalogi są widoczne pod /data w kontenerze.
