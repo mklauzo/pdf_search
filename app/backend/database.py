@@ -130,6 +130,15 @@ def get_indexed_count() -> int:
         conn.close()
 
 
+def get_indexed_filenames() -> set[str]:
+    conn = _get_conn()
+    try:
+        rows = conn.execute("SELECT filename FROM pdf_files").fetchall()
+        return {r["filename"] for r in rows}
+    finally:
+        conn.close()
+
+
 def get_stats() -> dict:
     conn = _get_conn()
     try:

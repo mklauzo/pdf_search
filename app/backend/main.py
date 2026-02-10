@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from app.backend.database import get_stats, init_db, search
 from app.backend.indexer import (
     DATA_DIR,
+    check_for_changes,
     get_current_dir,
     run_indexing_async,
     set_current_dir,
@@ -96,6 +97,13 @@ async def directories_endpoint():
         if len(rel.parts) <= 2:
             dirs.append(str(rel))
     return {"directories": dirs}
+
+
+@app.get("/changes-detected")
+async def changes_detected_endpoint():
+    if status.is_running:
+        return {"has_changes": False, "new_files": 0, "deleted_files": 0}
+    return check_for_changes()
 
 
 @app.post("/set-directory")

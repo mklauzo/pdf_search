@@ -88,8 +88,9 @@
   }
   .btn-search { background: #4a90d9; color: #fff; }
   .btn-search:hover { background: #3a7bc8; }
-  .btn-reindex { background: #e0e0e0; color: #333; }
-  .btn-reindex:hover { background: #d0d0d0; }
+  .btn-reindex { background: #e0e0e0; color: #999; cursor: default; }
+  .btn-reindex.has-changes { background: #4a90d9; color: #fff; cursor: pointer; }
+  .btn-reindex.has-changes:hover { background: #3a7bc8; }
   .toolbar {
     display: flex;
     justify-content: space-between;
@@ -248,7 +249,7 @@
     <div id="results-count"></div>
     <div>
       <button class="btn-stats" onclick="toggleStats()">Stats</button>
-      <button class="btn-reindex" onclick="doReindex()">Reindex</button>
+      <button class="btn-reindex" id="btn-reindex" onclick="doReindex()" disabled>Reindex</button>
     </div>
   </div>
 
@@ -296,8 +297,10 @@ const progressFill = document.getElementById('progress-fill');
 const errorList = document.getElementById('error-list');
 const dirCurrent = document.getElementById('dir-current');
 const dirSelect = document.getElementById('dir-select');
+const btnReindex = document.getElementById('btn-reindex');
 
 let pollTimer = null;
+let changesTimer = null;
 let lastQuery = '';
 
 queryInput.addEventListener('keydown', e => {
@@ -406,7 +409,10 @@ function esc(s) {
 // --- Reindex ---
 
 async function doReindex() {
+  if (btnReindex.disabled) return;
   try {
+    btnReindex.disabled = true;
+    btnReindex.classList.remove('has-changes');
     await fetch('/reindex', {method: 'POST'});
     startPolling();
   } catch (err) {
@@ -442,6 +448,7 @@ async function pollStatus() {
       statusText.textContent = `Indexing complete (${s.processed_files}/${s.total_files}).`;
       progressFill.style.width = '100%';
       stopPolling();
+      checkChanges();
     }
     if (s.errors && s.errors.length) {
       errorList.textContent = 'Errors: ' + s.errors.join('; ');
@@ -490,9 +497,39 @@ async function toggleStats() {
   } catch (err) { /* ignore */ }
 }
 
+// --- Change detection ---
+
+async function checkChanges() {
+  try {
+    const res = await fetch('/changes-detected');
+    const data = await res.json();
+    if (data.has_changes) {
+      btnReindex.disabled = false;
+      btnReindex.classList.add('has-changes');
+      let label = 'Reindex';
+      const parts = [];
+      if (data.new_files) parts.push('+' + data.new_files);
+      if (data.deleted_files) parts.push('-' + data.deleted_files);
+      if (parts.length) label += ' (' + parts.join(', ') + ')';
+      btnReindex.textContent = label;
+    } else {
+      btnReindex.disabled = true;
+      btnReindex.classList.remove('has-changes');
+      btnReindex.textContent = 'Reindex';
+    }
+  } catch (err) { /* ignore */ }
+}
+
+function startChangesPolling() {
+  if (changesTimer) return;
+  checkChanges();
+  changesTimer = setInterval(checkChanges, 15000);
+}
+
 // Init
 loadDirectories();
 startPolling();
+startChangesPolling();
 </script>
 </body>
 </html>

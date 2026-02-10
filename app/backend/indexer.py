@@ -4,6 +4,10 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from PIL import Image
+
+Image.MAX_IMAGE_PIXELS = 300_000_000  # allow large scanned pages
+
 import pdfplumber
 import pytesseract
 from pdf2image import convert_from_path
@@ -11,6 +15,7 @@ from pdf2image import convert_from_path
 from app.backend.database import (
     clear_index,
     file_already_indexed,
+    get_indexed_filenames,
     store_file,
     store_page,
 )
@@ -124,6 +129,19 @@ def _run_indexing(full_reindex: bool = False) -> None:
         status.processed_files += 1
 
     status.current_file = ""
+
+
+def check_for_changes() -> dict:
+    """Compare PDF files on disk with indexed files to detect new/deleted."""
+    disk_files = {str(p.relative_to(_current_dir)) for p in _current_dir.rglob("*.pdf")}
+    indexed_files = get_indexed_filenames()
+    new_count = len(disk_files - indexed_files)
+    deleted_count = len(indexed_files - disk_files)
+    return {
+        "has_changes": bool(new_count or deleted_count),
+        "new_files": new_count,
+        "deleted_files": deleted_count,
+    }
 
 
 async def run_indexing_async(full_reindex: bool = False) -> None:

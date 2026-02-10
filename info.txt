@@ -1,50 +1,97 @@
 PDF Search — wyszukiwarka treści w plikach PDF
+================================================
 
 Aplikacja webowa uruchamiana w Dockerze. Indeksuje pliki PDF (tekstowe i skany)
 z wybranego katalogu na dysku i umożliwia wyszukiwanie fraz przez przeglądarkę.
 Skany są rozpoznawane automatycznie przez OCR (Tesseract, język polski).
 
-Wymagania: Docker i Docker Compose.
 
-Konfiguracja — plik .env obok docker-compose.yml:
+1. WYMAGANIA
 
-    PDF_DIR=/ścieżka/do/katalogu/z/pdfami
-    PORT=8080
+   Docker i Docker Compose.
 
-Uruchomienie:
 
-    docker-compose up -d --build
+2. INSTALACJA I URUCHOMIENIE
 
-Aplikacja dostępna pod adresem http://localhost:8080 (lub inny ustawiony PORT).
+   Konfiguracja — plik .env obok docker-compose.yml:
 
-Przy starcie pliki PDF są automatycznie indeksowane. Postęp widoczny na stronie.
-Przycisk "Reindeksuj" pozwala odświeżyć indeks po dodaniu nowych plików.
-Niezmienione pliki nie są przetwarzane ponownie.
+       PDF_DIR=/ścieżka/do/katalogu/z/pdfami
+       PORT=8080
 
-Zmiana katalogu PDF bez restartu kontenera
--------------------------------------------
+   Uruchomienie:
 
-Zmiana podkatalogu wewnątrz zamontowanego wolumenu działa z poziomu UI
-(dropdown "Katalog" nad wyszukiwarką) — bez restartu.
+       docker compose up -d --build
 
-Zmiana ścieżki hosta (inny PDF_DIR) wymaga restartu kontenera,
-bo Docker mount jest ustawiany przy tworzeniu kontenera.
+   Aplikacja dostępna pod adresem http://localhost:8080 (lub inny ustawiony PORT).
 
-Obejście 1: zamontuj szerszy katalog
+   Zatrzymanie:
 
-  Zamontuj katalog nadrzędny, np. cały home:
+       docker compose down
 
-    PDF_DIR=/home/jan docker compose up --build
 
-  Wtedy w UI zobaczysz podkatalogi (dokumenty, projekty/raporty, itd.)
-  i przełączasz się między nimi bez restartu.
+3. JAK PRZEBIEGA INDEKSOWANIE
 
-Obejście 2: symlinki
+   Indeksowanie uruchamia się automatycznie przy starcie kontenera.
 
-  Zamontuj jeden katalog i wrzucaj do niego symlinki do innych lokalizacji:
+   Dla każdej strony PDF-a:
+   a) Najpierw próbuje wyciągnąć tekst programowo (pdfplumber).
+   b) Jeśli strona zawiera mniej niż 50 znaków (np. skan), automatycznie
+      uruchamia OCR (Tesseract, język polski) — decyzja zapada osobno
+      dla każdej strony, więc mieszane PDF-y są obsługiwane poprawnie.
 
-    mkdir -p ./data
-    ln -s /home/jan/dokumenty ./data/dokumenty
-    ln -s /home/jan/raporty ./data/raporty
+   Pliki rozpoznawane są po sumie SHA-256 — jeśli plik się nie zmienił,
+   jest pomijany przy ponownym indeksowaniu.
 
-  Wtedy wszystkie katalogi są widoczne pod /data w kontenerze.
+   Zindeksowane dane trafiają do bazy SQLite z FTS5 (pełnotekstowe
+   wyszukiwanie). Baza zapisywana jest w katalogu z PDF-ami jako plik
+   .pdf_search_index.db
+
+   Indeksowanie działa w tle po stronie serwera. Przeglądarka NIE musi
+   być otwarta — wystarczy że kontener Docker jest uruchomiony.
+   Postęp można śledzić w interfejsie webowym lub odpytując endpoint
+   GET /indexing-status
+
+   Ponowne indeksowanie można wywołać:
+   - przyciskiem "Reindeksuj" w interfejsie webowym
+   - żądaniem: curl -X POST http://localhost:8080/reindex
+
+
+4. DODAWANIE NOWYCH DOKUMENTÓW
+
+   Skopiuj pliki PDF do katalogu wskazanego przez PDF_DIR (domyślnie: ./data).
+   Pliki mogą być w podkatalogach.
+
+   Następnie uruchom reindeksację:
+   a) kliknij przycisk "Reindeksuj" w interfejsie webowym, lub
+   b) wyślij żądanie: curl -X POST http://localhost:8080/reindex
+
+   Zaindeksowane zostaną tylko nowe i zmienione pliki — istniejące
+   zostaną pominięte.
+
+
+5. ZMIANA KATALOGU PDF BEZ RESTARTU KONTENERA
+
+   Zmiana podkatalogu wewnątrz zamontowanego wolumenu działa z poziomu UI
+   (dropdown "Katalog" nad wyszukiwarką) — bez restartu.
+
+   Zmiana ścieżki hosta (inny PDF_DIR) wymaga restartu kontenera,
+   bo Docker mount jest ustawiany przy tworzeniu kontenera.
+
+   Obejście 1: zamontuj szerszy katalog
+
+     Zamontuj katalog nadrzędny, np. cały home:
+
+         PDF_DIR=/home/jan docker compose up --build
+
+     Wtedy w UI zobaczysz podkatalogi (dokumenty, projekty/raporty, itd.)
+     i przełączasz się między nimi bez restartu.
+
+   Obejście 2: symlinki
+
+     Zamontuj jeden katalog i wrzucaj do niego symlinki do innych lokalizacji:
+
+         mkdir -p ./data
+         ln -s /home/jan/dokumenty ./data/dokumenty
+         ln -s /home/jan/raporty ./data/raporty
+
+     Wtedy wszystkie katalogi są widoczne pod /data w kontenerze.
