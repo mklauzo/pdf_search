@@ -218,13 +218,106 @@
     padding: 0.25rem 0.8rem;
     border-top: 1px solid #eee;
   }
-  .btn-stats {
+  .btn-stats, .btn-browse {
     background: #e0e0e0;
     color: #333;
     font-size: 0.85rem;
     padding: 0.4rem 0.8rem;
   }
-  .btn-stats:hover { background: #d0d0d0; }
+  .btn-stats:hover, .btn-browse:hover { background: #d0d0d0; }
+
+  /* PDF Viewer overlay */
+  .viewer-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 1000;
+    justify-content: center;
+    align-items: center;
+  }
+  .viewer-overlay.active { display: flex; }
+  .viewer-panel {
+    background: #fff;
+    border-radius: 8px;
+    width: 95vw;
+    max-width: 900px;
+    height: 92vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.3);
+  }
+  .viewer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1rem;
+    background: #4a90d9;
+    color: #fff;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .viewer-header select {
+    flex: 1;
+    min-width: 150px;
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 4px;
+  }
+  .viewer-nav {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex-shrink: 0;
+  }
+  .viewer-nav button {
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  .viewer-nav button:hover { background: rgba(255,255,255,0.35); }
+  .viewer-nav button:disabled { opacity: 0.4; cursor: default; }
+  .viewer-nav span {
+    font-size: 0.85rem;
+    min-width: 80px;
+    text-align: center;
+  }
+  .viewer-close {
+    padding: 0.3rem 0.6rem;
+    font-size: 1rem;
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-left: auto;
+  }
+  .viewer-close:hover { background: rgba(255,255,255,0.35); }
+  .viewer-body {
+    flex: 1;
+    overflow: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 1rem;
+    background: #e8e8e8;
+  }
+  .viewer-body img {
+    max-width: 100%;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    border-radius: 2px;
+  }
+  .viewer-loading {
+    color: #888;
+    font-size: 0.95rem;
+    padding: 3rem;
+  }
 </style>
 </head>
 <body>
@@ -248,6 +341,7 @@
   <div class="toolbar">
     <div id="results-count"></div>
     <div>
+      <button class="btn-browse" onclick="openViewer()">Browse</button>
       <button class="btn-stats" onclick="toggleStats()">Stats</button>
       <button class="btn-reindex" id="btn-reindex" onclick="doReindex()" disabled>Reindex</button>
     </div>
@@ -285,6 +379,23 @@
   </div>
 
   <div id="results"></div>
+</div>
+
+<div class="viewer-overlay" id="viewer-overlay">
+  <div class="viewer-panel">
+    <div class="viewer-header">
+      <select id="viewer-file-select"><option value="">-- select file --</option></select>
+      <div class="viewer-nav">
+        <button onclick="viewerPrev()" id="viewer-prev" disabled>&larr; Prev</button>
+        <span id="viewer-page-info">-</span>
+        <button onclick="viewerNext()" id="viewer-next" disabled>Next &rarr;</button>
+      </div>
+      <button class="viewer-close" onclick="closeViewer()">&times;</button>
+    </div>
+    <div class="viewer-body" id="viewer-body">
+      <div class="viewer-loading">Select a file to browse.</div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -390,7 +501,7 @@ function renderResults(results) {
   for (const r of results) {
     const imgSrc = `/page-image?file=${encodeURIComponent(r.file)}&page=${r.page}&query=${encodeURIComponent(lastQuery)}`;
     html += `<tr>
-      <td>${esc(r.file)}</td>
+      <td><a href="#" onclick="openViewerForFile('${esc(r.file).replace(/'/g, "\\'")}', ${r.page}); return false;" style="color:#4a90d9;text-decoration:underline;cursor:pointer">${esc(r.file)}</a></td>
       <td>${r.page}</td>
       <td>${r.snippet}</td>
       <td><a href="${imgSrc}" target="_blank"><img class="page-thumb" src="${imgSrc}" loading="lazy" alt="Page ${r.page}"></a></td>
@@ -496,6 +607,106 @@ async function toggleStats() {
     statsPanel.classList.add('active');
   } catch (err) { /* ignore */ }
 }
+
+// --- PDF Viewer ---
+
+const viewerOverlay = document.getElementById('viewer-overlay');
+const viewerFileSelect = document.getElementById('viewer-file-select');
+const viewerBody = document.getElementById('viewer-body');
+const viewerPageInfo = document.getElementById('viewer-page-info');
+const viewerPrevBtn = document.getElementById('viewer-prev');
+const viewerNextBtn = document.getElementById('viewer-next');
+
+let viewerCurrentFile = '';
+let viewerCurrentPage = 1;
+let viewerPageCount = 0;
+
+async function openViewer() {
+  viewerOverlay.classList.add('active');
+  viewerFileSelect.innerHTML = '<option value="">-- select file --</option>';
+  viewerBody.innerHTML = '<div class="viewer-loading">Loading file list...</div>';
+  viewerPageInfo.textContent = '-';
+  viewerPrevBtn.disabled = true;
+  viewerNextBtn.disabled = true;
+  try {
+    const res = await fetch('/files');
+    const data = await res.json();
+    for (const f of data.files) {
+      const opt = document.createElement('option');
+      opt.value = f;
+      opt.textContent = f;
+      viewerFileSelect.appendChild(opt);
+    }
+    viewerBody.innerHTML = '<div class="viewer-loading">Select a file to browse.</div>';
+  } catch (err) {
+    viewerBody.innerHTML = '<div class="viewer-loading">Error loading files.</div>';
+  }
+}
+
+function openViewerForFile(filename, page) {
+  openViewer().then(() => {
+    viewerFileSelect.value = filename;
+    loadViewerFile(filename, page);
+  });
+}
+
+viewerFileSelect.addEventListener('change', () => {
+  const file = viewerFileSelect.value;
+  if (file) loadViewerFile(file, 1);
+});
+
+async function loadViewerFile(file, page) {
+  viewerCurrentFile = file;
+  viewerCurrentPage = page || 1;
+  viewerBody.innerHTML = '<div class="viewer-loading">Loading...</div>';
+  try {
+    const res = await fetch(`/file-page-count?file=${encodeURIComponent(file)}`);
+    const data = await res.json();
+    viewerPageCount = data.page_count;
+    renderViewerPage();
+  } catch (err) {
+    viewerBody.innerHTML = '<div class="viewer-loading">Error loading file.</div>';
+  }
+}
+
+function renderViewerPage() {
+  viewerPageInfo.textContent = `${viewerCurrentPage} / ${viewerPageCount}`;
+  viewerPrevBtn.disabled = viewerCurrentPage <= 1;
+  viewerNextBtn.disabled = viewerCurrentPage >= viewerPageCount;
+  const src = `/page-image?file=${encodeURIComponent(viewerCurrentFile)}&page=${viewerCurrentPage}`;
+  viewerBody.innerHTML = `<img src="${src}" alt="Page ${viewerCurrentPage}">`;
+}
+
+function viewerPrev() {
+  if (viewerCurrentPage > 1) {
+    viewerCurrentPage--;
+    renderViewerPage();
+  }
+}
+
+function viewerNext() {
+  if (viewerCurrentPage < viewerPageCount) {
+    viewerCurrentPage++;
+    renderViewerPage();
+  }
+}
+
+function closeViewer() {
+  viewerOverlay.classList.remove('active');
+  viewerCurrentFile = '';
+  viewerPageCount = 0;
+}
+
+viewerOverlay.addEventListener('click', (e) => {
+  if (e.target === viewerOverlay) closeViewer();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (!viewerOverlay.classList.contains('active')) return;
+  if (e.key === 'Escape') closeViewer();
+  if (e.key === 'ArrowLeft') viewerPrev();
+  if (e.key === 'ArrowRight') viewerNext();
+});
 
 // --- Change detection ---
 

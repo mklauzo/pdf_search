@@ -99,6 +99,34 @@ async def directories_endpoint():
     return {"directories": dirs}
 
 
+@app.get("/files")
+async def files_endpoint():
+    from app.backend.indexer import _current_dir
+    files = sorted(str(p.relative_to(_current_dir)) for p in _current_dir.rglob("*.pdf"))
+    return {"files": files}
+
+
+@app.get("/file-page-count")
+async def file_page_count_endpoint(
+    file: str = Query(..., description="Relative filename"),
+):
+    from app.backend.indexer import _current_dir
+
+    pdf_path = (_current_dir / file).resolve()
+    if not str(pdf_path).startswith(str(_current_dir.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid file path")
+    if not pdf_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            count = len(pdf.pages)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading PDF: {e}")
+
+    return {"file": file, "page_count": count}
+
+
 @app.get("/changes-detected")
 async def changes_detected_endpoint():
     if status.is_running:
