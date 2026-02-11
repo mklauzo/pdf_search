@@ -14,6 +14,7 @@ from pdf2image import convert_from_path
 
 from app.backend.database import (
     clear_index,
+    delete_file_by_name,
     file_already_indexed,
     get_indexed_filenames,
     store_file,
@@ -92,6 +93,9 @@ def _index_single_file(pdf_path: Path) -> None:
         logger.info("Skipping (unchanged): %s", rel_path)
         return
 
+    # Remove old entry if file was modified (different hash)
+    delete_file_by_name(rel_path)
+
     logger.info("Indexing: %s", rel_path)
     file_id = store_file(rel_path, file_hash)
 
@@ -108,14 +112,22 @@ def _index_single_file(pdf_path: Path) -> None:
         status.errors.append(f"{rel_path}: {e}")
 
 
-def _run_indexing(full_reindex: bool = False) -> None:
+def _run_indexing(clear_first: bool = False) -> None:
     global status
     status.errors = []
 
-    if full_reindex:
+    if clear_first:
         clear_index()
 
     pdf_files = sorted(_current_dir.rglob("*.pdf"))
+    disk_filenames = {str(p.relative_to(_current_dir)) for p in pdf_files}
+
+    # Remove deleted files from index
+    indexed_filenames = get_indexed_filenames()
+    for deleted in indexed_filenames - disk_filenames:
+        logger.info("Removing deleted file from index: %s", deleted)
+        delete_file_by_name(deleted)
+
     status.total_files = len(pdf_files)
     status.processed_files = 0
 
@@ -144,7 +156,7 @@ def check_for_changes() -> dict:
     }
 
 
-async def run_indexing_async(full_reindex: bool = False) -> None:
+async def run_indexing_async(clear_first: bool = False) -> None:
     global status
     if _lock.locked():
         logger.warning("Indexing already in progress, skipping.")
@@ -154,6 +166,6 @@ async def run_indexing_async(full_reindex: bool = False) -> None:
         status.is_running = True
         try:
             loop = asyncio.get_event_loop()
-            await loop.run_in_executor(None, _run_indexing, full_reindex)
+            await loop.run_in_executor(None, _run_indexing, clear_first)
         finally:
             status.is_running = False

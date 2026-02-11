@@ -108,6 +108,28 @@ def search(query: str, limit: int = 100) -> list[dict]:
         conn.close()
 
 
+def delete_file_by_name(filename: str) -> None:
+    """Delete a file and its pages (including FTS entries) from the index."""
+    conn = _get_conn()
+    try:
+        row = conn.execute(
+            "SELECT id FROM pdf_files WHERE filename = ?", (filename,)
+        ).fetchone()
+        if row is None:
+            return
+        file_id = row["id"]
+        conn.execute(
+            "DELETE FROM pdf_pages_fts WHERE rowid IN "
+            "(SELECT id FROM pdf_pages WHERE file_id = ?)",
+            (file_id,),
+        )
+        conn.execute("DELETE FROM pdf_pages WHERE file_id = ?", (file_id,))
+        conn.execute("DELETE FROM pdf_files WHERE id = ?", (file_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def clear_index() -> None:
     conn = _get_conn()
     try:

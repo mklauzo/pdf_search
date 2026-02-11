@@ -60,7 +60,7 @@ async def search_endpoint(req: SearchRequest):
 async def reindex_endpoint():
     if status.is_running:
         return {"message": "Indexing already in progress"}
-    asyncio.create_task(run_indexing_async(full_reindex=True))
+    asyncio.create_task(run_indexing_async())
     return {"message": "Reindexing started"}
 
 
@@ -142,7 +142,7 @@ async def set_directory_endpoint(req: SetDirectoryRequest):
         raise HTTPException(status_code=400, detail=str(e))
     if status.is_running:
         return {"message": "Directory changed, but indexing already in progress"}
-    asyncio.create_task(run_indexing_async(full_reindex=True))
+    asyncio.create_task(run_indexing_async(clear_first=True))
     return {"message": "Directory changed, reindexing started"}
 
 
